@@ -1,0 +1,143 @@
+export const TODAY = '2026-10-21';
+export const roles = {
+  requester: { label:'Requester', name:'Isabella Reyes', initials:'IR', title:'Marketing associate', permissions:['request','liquidate'], scope:'own' },
+  approver: { label:'Approver', name:'Miguel Santos', initials:'MS', title:'Department manager', permissions:['approveRequest'], scope:'all' },
+  custodian: { label:'Custodian', name:'Sofia Cruz', initials:'SC', title:'Petty cash custodian', permissions:['release','verify','replenish','count','reports'], scope:'fund' },
+  finance: { label:'Finance / Admin', name:'Daniel Garcia', initials:'DG', title:'Finance administrator', permissions:['approveReplenishment','approveCount','manage','reports','reimburse'], scope:'all' },
+  superuser: { label:'Super User', name:'Alex Morgan', initials:'AM', title:'System super user', permissions:['request','liquidate','approveRequest','release','verify','replenish','count','approveReplenishment','approveCount','manage','reports','reimburse','editAll'], scope:'all' },
+};
+export const can = (role, permission) => roles[role]?.permissions.includes(permission);
+export function cents(value, allowZero=false) {
+  const s=String(value ?? '').trim();
+  if(!/^\d+(\.\d{1,2})?$/.test(s)) throw Error('Enter an amount with no more than two decimal places.');
+  const [whole,decimal='']=s.split('.');
+  const n=Number(whole)*100+Number(decimal.padEnd(2,'0'));
+  if(!Number.isSafeInteger(n)||n>10000000000||(!allowZero&&n===0)) throw Error(allowZero?'Enter a valid non-negative amount.':'Amount must be greater than zero.');
+  return n;
+}
+export const money=n=>new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',minimumFractionDigits:2}).format((n||0)/100);
+export const sum=items=>items.reduce((n,i)=>n+Number(i.amount||0),0);
+export const balance=(db,fund)=>db.movements.filter(m=>m.fund===fund).reduce((n,m)=>n+m.amount,0);
+export const dateLabel=s=>s?new Date(s+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}):'—';
+export const addDays=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
+export const eligibleRequests=(db,role)=>db.requests.filter(r=>(can(role,'editAll')||r.owner===roles[role].name)&&r.status==='Released'&&!db.liquidations.some(l=>l.request===r.id));
+export const financialFieldsLocked=(db,type,record)=>!!record&&(type==='requests'?['Released','Liquidated','Closed'].includes(record.status):type==='liquidations'?record.returnConfirmed||['Verified','Liquidated'].includes(record.status)||db.replenishments.some(r=>r.liquidations.includes(record.id)&&!['Rejected','Needs Changes'].includes(r.status)):type==='replenishments'?record.status==='Posted':false);
+export const replenishable=(db,fund,editingId)=>db.liquidations.filter(l=>l.fund===fund&&l.status==='Liquidated'&&!l.replenished&&(!l.excess||l.reimbursement?.status==='Paid')&&!db.replenishments.some(r=>r.id!==editingId&&!['Rejected','Needs Changes'].includes(r.status)&&r.liquidations.includes(l.id)));
+export const replenishAmount=l=>l.reimbursement?.source==='Outside petty cash'?Math.min(sum(l.items),l.release):sum(l.items);
+export const scopedRequests=(db,role)=>roles[role].scope==='own'?db.requests.filter(r=>r.owner===roles[role].name):db.requests;
+const event=(actor,action,note='')=>({actor:roles[actor]?.name||actor,action,note,time:new Date().toISOString()});
+const seedEvent=(action,actor='Sofia Cruz',day='20',note='')=>({action,actor,time:`2026-10-${day}T02:30:00Z`,note});
+const item=(category,description,amount)=>({id:crypto.randomUUID(),category,description,amount,payee:'',date:TODAY});
+export function initialData(){
+  const funds=[
+    {id:'FND-001',code:'PCF-MNL',name:'Main Office',location:'Makati City',authorized:5000000,custodian:'Sofia Cruz',threshold:25,deadline:3,status:'Active',description:'Day-to-day office and field expenses.',history:[seedEvent('Fund authorized','Daniel Garcia','01')]},
+    {id:'FND-002',code:'PCF-CEB',name:'Cebu Branch',location:'Cebu City',authorized:2500000,custodian:'Sofia Cruz',threshold:25,deadline:3,status:'Active',description:'Cebu operations and local travel.',history:[seedEvent('Fund authorized','Daniel Garcia','01')]},
+    {id:'FND-003',code:'PCF-WHS',name:'Warehouse',location:'Pasig City',authorized:1500000,custodian:'Sofia Cruz',threshold:25,deadline:3,status:'Active',description:'Warehouse supplies and maintenance.',history:[seedEvent('Fund authorized','Daniel Garcia','01')]},
+    {id:'FND-004',code:'PCF-DVO',name:'Davao Branch',location:'Davao City',authorized:2000000,custodian:'Sofia Cruz',threshold:25,deadline:3,status:'Pending Approval',description:'Proposed branch operating fund. No cash received.',history:[seedEvent('Submitted for approval','Daniel Garcia')]},
+  ];
+  const rows=[
+    ['001','Isabella Reyes','Marketing','FND-001','Client visit & working lunch','Released',250000,'19'],
+    ['002','Isabella Reyes','Marketing','FND-001','Office supplies for campaign launch','Pending Approval',285000,'21'],
+    ['003','Carlos Mendoza','Operations','FND-001','Warehouse equipment maintenance','Approved',320000,'20'],
+    ['004','Isabella Reyes','Marketing','FND-001','October field team transportation','Released',180000,'16'],
+    ['005','Patricia Lim','Administration','FND-001','Monthly office consumables','Liquidated',320000,'15'],
+    ['006','Marco Bautista','Operations','FND-002','Cebu branch client meeting','Liquidated',220000,'17'],
+    ['007','Isabella Reyes','Marketing','FND-001','Campaign print materials','Needs Changes',150000,'20'],
+    ['008','Andrea Torres','Administration','FND-003','Safety and cleaning supplies','Released',150000,'20'],
+    ['009','Isabella Reyes','Marketing','FND-001','Supplier coordination visit','Draft',120000,'21'],
+    ['010','Carlos Mendoza','Operations','FND-001','Emergency printer supplies','Liquidated',300000,'18'],
+    ['011','Isabella Reyes','Marketing','FND-001','Team planning workshop','Released',200000,'20'],
+    ['012','Patricia Lim','Administration','FND-001','Reception area refreshments','Pending Approval',85000,'21'],
+    ['013','Isabella Reyes','Marketing','FND-001','Event transport and logistics','Liquidated',285000,'12'],
+  ];
+  const requests=rows.map(([n,owner,department,fund,purpose,status,amount,day])=>({id:`PCR-2026-${n.padStart(4,'0')}`,owner,department,fund,purpose,status,date:`2026-10-${day}`,required:`2026-10-${day}`,releaseDate:`2026-10-${day}`,due:addDays(`2026-10-${day}`,3),amount,method:'Cash',recipient:owner,reference:`CV-${n}`,notes:'',fixture:true,items:[item('Transportation',purpose.includes('lunch')?'Taxi to client site':purpose,Math.round(amount*.4)),item('Meals & refreshments',purpose.includes('lunch')?'Working lunch with client':'Supporting business expenses',amount-Math.round(amount*.4))],history:[seedEvent('Request submitted',owner,day),...(status==='Needs Changes'?[seedEvent('Changes requested','Miguel Santos',day,'Please specify the print quantities and supplier quotation.')]:[])]}));
+  const receipts=its=>its.map((x,i)=>({...x,payee:i?'Office & Co.':'Metro Transport',receipt:{name:`sample-receipt-${i+1}.svg`,url:'/sample-receipt.svg',sample:true}}));
+  const liquidations=[
+    {id:'LIQ-2026-0001',request:'PCR-2026-0004',fund:'FND-001',owner:'Isabella Reyes',release:180000,items:receipts([item('Transportation','Field visits to client offices',90000),item('Meals & refreshments','Field team working lunch',75000)]),returned:15000,status:'Submitted',date:'2026-10-19',fixture:true,history:[seedEvent('Liquidation created','Isabella Reyes','18'),seedEvent('Submitted for verification','Isabella Reyes','19')]},
+    {id:'LIQ-2026-0002',request:'PCR-2026-0005',fund:'FND-001',owner:'Patricia Lim',release:320000,items:receipts([item('Office supplies','Stationery and printer consumables',180000),item('Cleaning & maintenance','Monthly cleaning materials',125000)]),returned:15000,returnConfirmed:true,status:'Liquidated',date:'2026-10-17',fixture:true,history:[seedEvent('Submitted','Patricia Lim','16'),seedEvent('Cash return received','Sofia Cruz','17','₱150.00 received; voucher RT-002.'),seedEvent('Verified and liquidated','Sofia Cruz','17')]},
+    {id:'LIQ-2026-0003',request:'PCR-2026-0006',fund:'FND-002',owner:'Marco Bautista',release:220000,items:receipts([item('Transportation','Cebu client site travel',90000),item('Meals & refreshments','Client meeting refreshments',110000)]),returned:20000,returnConfirmed:true,status:'Liquidated',date:'2026-10-19',fixture:true,history:[seedEvent('Verified and liquidated','Sofia Cruz','19')]},
+    {id:'LIQ-2026-0004',request:'PCR-2026-0010',fund:'FND-001',owner:'Carlos Mendoza',release:300000,items:receipts([item('Office supplies','Replacement printer cartridges',300000)]),returned:0,status:'Liquidated',date:'2026-10-20',fixture:true,history:[seedEvent('Verified and liquidated','Sofia Cruz')]},
+    {id:'LIQ-2026-0005',request:'PCR-2026-0011',fund:'FND-001',owner:'Isabella Reyes',release:200000,items:receipts([item('Meals & refreshments','Team workshop lunch',160000),item('Office supplies','Workshop materials',40000)]),returned:0,status:'Needs Correction',date:'2026-10-21',fixture:true,history:[seedEvent('Returned for correction','Sofia Cruz','21','Please correct the lunch receipt description and include the attendee count.')]},
+    {id:'LIQ-2026-0006',request:'PCR-2026-0013',fund:'FND-001',owner:'Isabella Reyes',release:285000,items:receipts([item('Transportation','Event transport and delivery',285000)]),returned:0,status:'Liquidated',replenished:true,date:'2026-10-14',fixture:true,history:[seedEvent('Verified and liquidated','Sofia Cruz','14'),seedEvent('Replenishment posted','Daniel Garcia','15')]},
+  ];
+  // Actual expense dates follow each settlement fixture, not the runtime date.
+  liquidations.forEach(l=>l.items.forEach(i=>i.date=l.date));
+  const movements=funds.filter(f=>f.status==='Active').map(f=>({id:`MOV-OPEN-${f.code}`,fund:f.id,amount:f.authorized,date:'2026-10-01',type:'Opening funding',source:f.id,actor:'Daniel Garcia',note:'Opening cash received and acknowledged; sample opening voucher.'}));
+  requests.filter(r=>['Released','Liquidated','Closed'].includes(r.status)).forEach(r=>movements.push({id:`MOV-${r.id}`,fund:r.fund,amount:-r.amount,date:r.releaseDate,type:'Cash release',source:r.id,actor:'Sofia Cruz',note:`Cash handed to ${r.owner}; ${r.reference}.`}));
+  liquidations.filter(l=>l.returnConfirmed&&l.returned).forEach(l=>movements.push({id:`MOV-RETURN-${l.id}`,fund:l.fund,amount:l.returned,date:l.date,type:'Cash return',source:l.id,actor:'Sofia Cruz',note:'Unused cash physically received.'}));
+  movements.push({id:'MOV-REP-001',fund:'FND-001',amount:285000,date:'2026-10-15',type:'Replenishment',source:'REP-2026-0001',actor:'Daniel Garcia',note:'Funding received, acknowledged and posted.'});
+  requests.find(r=>r.id==='PCR-2026-0013').status='Closed';
+  const db={funds,requests,liquidations,movements,replenishments:[{id:'REP-2026-0001',fund:'FND-001',owner:'Sofia Cruz',date:'2026-10-15',amount:285000,status:'Posted',liquidations:['LIQ-2026-0006'],reference:'RCV-1026-01',fixture:true,history:[seedEvent('Approved','Daniel Garcia','15'),seedEvent('Funding received and posted','Daniel Garcia','15')]}],counts:[],categories:[['Transportation','Local travel, fares, parking and tolls'],['Meals & refreshments','Business meals and team refreshments'],['Office supplies','Stationery, printing and office consumables'],['Cleaning & maintenance','Cleaning materials and minor repairs'],['Postage & delivery','Courier, postage and delivery charges'],['Miscellaneous','Other approved business expenses']].map(([name,description],i)=>({id:`CAT-${i+1}`,name,description,status:'Active'}))};
+  const snap=balance(db,'FND-001');
+  db.counts=[{id:'REC-2026-0001',fund:'FND-001',date:TODAY,recorded:snap,physical:snap-1000,reason:'₱10 coin discrepancy. Recount requested before close of day.',notes:'Count completed at 9:30 AM.',owner:'Sofia Cruz',status:'Pending Approval',fixture:true,history:[seedEvent('Count submitted','Sofia Cruz','21')]}];
+  return db;
+}
+const assert=(condition,message)=>{if(!condition)throw Error(message)};
+function validateItems(db,items,receipts=false){
+  assert(items?.length,'Add at least one expense item.');
+  for(const i of items){assert(db.categories.some(c=>c.name===i.category&&(c.status==='Active'||i.inherited)),'Choose an active expense category.');assert(i.description?.trim(),'Add a description to every expense item.');assert(Number.isSafeInteger(i.amount)&&i.amount>0,'Every expense amount must be positive and have at most two decimal places.');if(receipts){assert(i.date&&i.date<=TODAY,'Enter a valid actual expense date, no later than the demo date.');assert(i.payee?.trim(),'Enter a merchant or payee for every actual expense.');assert(i.receipt?.url,'Attach a receipt to every actual expense.');}}
+}
+export function transact(original,a,role){
+  const db=structuredClone(original), actor=roles[role]; assert(actor,'Select a valid role.');
+  const permit=p=>assert(can(role,p),'This role cannot perform this action.');
+  const get=(type,id)=>{const x=db[type].find(r=>r.id===id);assert(x,'Record not found.');return x};
+  const log=(r,action,note)=>{r.history=[...(r.history||[]),event(role,action,note)]};
+  const nextId=(type,prefix)=>`${prefix}-2026-${String(Math.max(0,...db[type].map(r=>Number(r.id.split('-').at(-1))||0))+1).padStart(4,'0')}`;
+  const post=(fund,amount,type,source,note)=>{assert(!db.movements.some(m=>m.source===source&&m.type===type),'This cash movement has already been recorded.');assert(Number.isSafeInteger(amount)&&amount!==0,'Invalid cash movement.');assert(amount>0||balance(db,fund)>=-amount,'The fund does not have enough recorded cash.');db.movements.push({id:crypto.randomUUID(),fund,amount,type,source,date:TODAY,actor:actor.name,note})};
+  let result;
+  const superuser=can(role,'editAll');
+  const saveTypes={saveRequest:'requests',saveLiquidation:'liquidations',saveReplenishment:'replenishments',saveCount:'counts'};
+  if(superuser&&a.id&&saveTypes[a.type])assert(!financialFieldsLocked(db,saveTypes[a.type],get(saveTypes[a.type],a.id)),'Posted financial fields are protected. Edit the transaction notes instead.');
+  if(a.type==='saveTransactionNotes'){
+    permit('editAll');assert(['requests','liquidations','replenishments','counts'].includes(a.recordType),'Invalid transaction type.');const r=get(a.recordType,a.id);r.notes=String(a.notes||'');log(r,'Transaction notes updated');result=r.id;
+  }else if(a.type==='saveRequest'){
+    permit('request');const v=a.value;assert(db.funds.some(f=>f.id===v.fund&&f.status==='Active'),'Choose an active petty cash fund.');assert(v.purpose?.trim()&&v.required,'Enter the purpose and required date.');assert(v.required>=v.date,'Required date cannot precede the request date.');validateItems(db,v.items);
+    let r=a.id?get('requests',a.id):null;if(r)assert(superuser||(r.owner===actor.name&&['Draft','Needs Changes'].includes(r.status)),'Only your own editable requests can be changed.');
+    const status=a.submit?'Pending Approval':superuser&&r&&!['Draft','Needs Changes'].includes(r.status)?'Draft':r?.status||'Draft';
+    if(r){Object.assign(r,v,{status,amount:sum(v.items)});log(r,a.submit?'Resubmitted for approval':'Draft updated')}
+    else{r={...v,id:nextId('requests','PCR'),owner:superuser?(v.owner||actor.name):actor.name,department:superuser?(v.department||'Administration'):'Marketing',status,amount:sum(v.items),date:TODAY,history:[event(role,a.submit?'Submitted for approval':'Draft created')]};db.requests.unshift(r)}result=r.id;
+  }else if(a.type==='requestDecision'){
+    permit('approveRequest');const r=get('requests',a.id);assert(r.status==='Pending Approval'&&(superuser||r.owner!==actor.name),'This request is not eligible for your decision.');assert(['Approved','Needs Changes','Rejected'].includes(a.status),'Invalid decision.');if(a.status!=='Approved')assert(a.note?.trim(),'Enter a reason for this decision.');r.status=a.status;log(r,a.status,a.note);
+  }else if(a.type==='release'){
+    permit('release');const r=get('requests',a.id);assert(r.status==='Approved','Only approved, unreleased requests can be released.');assert(a.confirmed&&a.reference?.trim(),'Confirm handover and enter the release voucher reference.');assert(superuser||get('funds',r.fund).custodian===actor.name,'This fund is assigned to another custodian.');post(r.fund,-r.amount,'Cash release',r.id,`${a.reference}; received by ${r.owner}.`);Object.assign(r,{status:'Released',releaseDate:TODAY,due:addDays(TODAY,get('funds',r.fund).deadline),method:'Cash',reference:a.reference});log(r,'Cash released',a.reference);
+  }else if(a.type==='saveLiquidation'){
+    permit('liquidate');const v=a.value,r=get('requests',v.request);assert((superuser||r.owner===actor.name)&&r.status==='Released','Select your own released cash request.');let l=a.id?get('liquidations',a.id):null;
+    assert(!db.liquidations.some(x=>x.request===r.id&&x.id!==a.id),'This cash request already has a liquidation.');if(l)assert(superuser||(l.owner===actor.name&&['Draft','Needs Correction'].includes(l.status)),'This liquidation cannot be edited.');validateItems(db,v.items,!!a.submit);
+    const actual=sum(v.items),excess=Math.max(0,actual-r.amount),expected=Math.max(0,r.amount-actual);assert(Number.isSafeInteger(v.returned)&&v.returned>=0,'Returned cash cannot be negative.');if(a.submit)assert(v.returned===expected,'Returned cash must account for the unused advance.');
+    const data={...v,fund:r.fund,owner:r.owner,release:r.amount,excess,date:TODAY,status:a.submit?'Submitted':superuser&&l&&!['Draft','Needs Correction'].includes(l.status)?'Draft':l?.status||'Draft'};
+    if(l){Object.assign(l,data);log(l,a.submit?'Submitted for verification':'Draft updated')}else{l={...data,id:nextId('liquidations','LIQ'),history:[event(role,a.submit?'Submitted for verification':'Draft created')]};db.liquidations.unshift(l)}result=l.id;
+  }else if(a.type==='liquidationReject'){
+    permit('editAll');const l=get('liquidations',a.id);assert(l.status==='Submitted'&&!l.returnConfirmed,'Only submitted liquidations without a posted return can be rejected.');assert(a.note?.trim(),'Enter the rejection reason.');l.status='Rejected';log(l,'Rejected',a.note);
+  }else if(a.type==='liquidationCorrection'){
+    permit('verify');const l=get('liquidations',a.id);assert(l.status==='Submitted','Only submitted liquidations can be reviewed.');assert(a.note?.trim(),'Enter the corrections needed.');l.status='Needs Correction';log(l,'Returned for correction',a.note);
+  }else if(a.type==='confirmReturn'){
+    permit('verify');const l=get('liquidations',a.id);assert(l.status==='Submitted'&&!l.returnConfirmed&&l.returned>0,'This return is not eligible for receipt.');assert(a.confirmed&&a.reference?.trim(),'Confirm cash receipt and enter the return voucher.');post(l.fund,l.returned,'Cash return',l.id,a.reference);l.returnConfirmed=true;log(l,'Cash return received',`${money(l.returned)}; ${a.reference}`);
+  }else if(a.type==='verify'){
+    permit('verify');const l=get('liquidations',a.id);assert(l.status==='Submitted','Only submitted liquidations can be verified.');validateItems(db,l.items,true);assert(l.returned===Math.max(0,l.release-sum(l.items)),'Resolve the unaccounted amount before verification.');assert(!l.returned||l.returnConfirmed,'Confirm physical cash return before verification.');l.status=l.excess?'Verified':'Liquidated';if(!l.excess)get('requests',l.request).status='Liquidated';log(l,l.excess?'Expenses verified; reimbursement pending':'Verified and liquidated');
+  }else if(a.type==='reimburse'){
+    permit('reimburse');const l=get('liquidations',a.id);assert(l.status==='Verified'&&l.excess>0,'This liquidation has no pending reimbursement.');assert(a.reference?.trim()&&a.confirmed,'Confirm reimbursement payment and enter its reference.');assert(['Petty cash fund','Outside petty cash'].includes(a.source),'Select the payment funding source.');if(a.source==='Petty cash fund')post(l.fund,-l.excess,'Reimbursement',l.id,a.reference);l.reimbursement={status:'Paid',source:a.source,reference:a.reference,amount:l.excess};l.status='Liquidated';get('requests',l.request).status='Liquidated';log(l,'Reimbursement authorized and paid',`${money(l.excess)} from ${a.source}; ${a.reference}`);
+  }else if(a.type==='saveReplenishment'){
+    permit('replenish');const v=a.value;let r=a.id?get('replenishments',a.id):null;if(r)assert(superuser||(r.owner===actor.name&&['Draft','Needs Changes'].includes(r.status)),'This replenishment is not editable.');assert(v.liquidations.length,'Select at least one eligible liquidation.');const eligible=replenishable(db,v.fund,a.id);assert(v.liquidations.every(id=>eligible.some(l=>l.id===id)),'Selection includes unavailable, reserved, or mixed-fund liquidations.');assert(new Set(v.liquidations).size===v.liquidations.length,'Duplicate liquidations are not allowed.');const data={...v,owner:r?.owner||actor.name,date:TODAY,amount:v.liquidations.reduce((n,id)=>n+replenishAmount(get('liquidations',id)),0),status:a.submit?'Pending Approval':superuser&&r&&!['Draft','Needs Changes','Needs Correction'].includes(r.status)?'Draft':r?.status||'Draft'};assert(data.amount>0,'Replenishment amount must be positive.');if(r){Object.assign(r,data);log(r,a.submit?'Submitted for approval':'Draft updated')}else{r={...data,id:nextId('replenishments','REP'),history:[event(role,a.submit?'Submitted for approval':'Draft created')]};db.replenishments.unshift(r)}result=r.id;
+  }else if(a.type==='replenishmentDecision'){
+    permit('approveReplenishment');const r=get('replenishments',a.id);assert(r.status==='Pending Approval'&&(superuser||r.owner!==actor.name),'This replenishment is not eligible for approval.');assert(['Approved','Needs Changes','Rejected'].includes(a.status),'Invalid decision.');if(a.status!=='Approved')assert(a.note?.trim(),'Enter the reason for this decision.');r.status=a.status;log(r,a.status,a.note);
+  }else if(a.type==='postReplenishment'){
+    permit('approveReplenishment');const r=get('replenishments',a.id);assert(r.status==='Approved','Approve the replenishment before posting.');assert(a.reference?.trim()&&a.confirmed,'Confirm actual funding receipt and enter the funding reference.');assert(r.liquidations.every(id=>{const l=get('liquidations',id);return l.fund===r.fund&&l.status==='Liquidated'&&!l.replenished}),'Source liquidations are no longer eligible.');post(r.fund,r.amount,'Replenishment',r.id,a.reference);r.status='Posted';r.reference=a.reference;r.liquidations.forEach(id=>{const l=get('liquidations',id);l.replenished=true;get('requests',l.request).status='Closed';log(l,'Replenishment posted',r.id)});log(r,'Funding received and posted',a.reference);
+  }else if(a.type==='saveCount'){
+    permit('count');const v=a.value;assert(db.funds.some(f=>f.id===v.fund&&f.status==='Active'),'Select an active fund.');assert(Number.isSafeInteger(v.physical)&&v.physical>=0,'Enter a non-negative physical cash count.');if(v.physical!==v.recorded)assert(v.reason?.trim(),'Explain the cash variance.');let r=a.id?get('counts',a.id):null;if(r)assert(superuser||(r.owner===actor.name&&['Draft','Needs Correction'].includes(r.status)),'This count is not editable.');const data={...v,recorded:r?.recorded??v.recorded,owner:r?.owner||actor.name,status:a.submit?'Pending Approval':superuser&&r&&!['Draft','Needs Changes','Needs Correction'].includes(r.status)?'Draft':r?.status||'Draft'};if(r){Object.assign(r,data);log(r,a.submit?'Count submitted':'Draft updated')}else{assert(v.recorded===balance(db,v.fund),'Recorded cash has changed. Reopen this form to take a current snapshot.');r={...data,id:nextId('counts','REC'),history:[event(role,a.submit?'Count submitted':'Draft created')]};db.counts.unshift(r)}result=r.id;
+  }else if(a.type==='countDecision'){
+    permit('approveCount');const r=get('counts',a.id);assert(r.status==='Pending Approval'&&(superuser||r.owner!==actor.name),'You cannot approve your own or an ineligible reconciliation.');assert(['Approved','Needs Correction','Rejected'].includes(a.status),'Invalid decision.');if(a.status!=='Approved')assert(a.note?.trim(),'Enter a reason.');r.status=a.status;log(r,a.status,a.note);
+  }else if(a.type==='saveFund'){
+    permit('manage');const v=a.value;assert(v.code?.trim()&&v.name?.trim()&&v.custodian,'Enter the fund code, name, and custodian.');assert(v.authorized>0&&Number.isSafeInteger(v.authorized),'Authorized amount must be positive.');assert(v.threshold>0&&v.threshold<=100&&Number.isInteger(v.deadline)&&v.deadline>0,'Enter a threshold between 1 and 100 and a positive whole number of deadline days.');assert(!db.funds.some(f=>f.code.toLowerCase()===v.code.toLowerCase()&&f.id!==a.id),'Fund code must be unique.');let r=a.id?get('funds',a.id):null;assert(superuser||!r||r.status!=='Pending Approval','This fund is already awaiting approval.');if(r?.status==='Active'||r?.status==='Inactive'){r.proposed={...v};r.status='Pending Approval';log(r,'Fund amendment submitted')}else if(r){Object.assign(r,v,{status:a.submit?'Pending Approval':'Draft'});log(r,a.submit?'Submitted for approval':'Draft updated')}else{r={...v,id:`FND-${String(db.funds.length+1).padStart(3,'0')}`,status:a.submit?'Pending Approval':'Draft',history:[event(role,a.submit?'Submitted for approval':'Draft created')]};db.funds.push(r)}result=r.id;
+  }else if(a.type==='fundDecision'){
+    permit('manage');const r=get('funds',a.id);assert(r.status==='Pending Approval','Only submitted funds can be reviewed.');assert(['Active','Needs Changes','Rejected'].includes(a.status),'Invalid decision.');if(a.status!=='Active')assert(a.note?.trim(),'Enter the decision reason.');if(a.status==='Active'&&r.proposed){Object.assign(r,r.proposed);delete r.proposed}r.status=a.status;log(r,a.status==='Active'?'Fund approved and activated':a.status,a.note);
+  }else if(a.type==='fundToggle'){
+    permit('manage');const r=get('funds',a.id);assert(['Active','Inactive'].includes(r.status),'Only approved funds can be activated or deactivated.');r.status=r.status==='Active'?'Inactive':'Active';log(r,r.status);
+  }else if(a.type==='openingFunding'){
+    permit('manage');const r=get('funds',a.id);assert(r.status==='Active'&&!db.movements.some(m=>m.fund===r.id&&m.type==='Opening funding'),'Opening funding has already been recorded or the fund is inactive.');assert(a.confirmed&&a.reference?.trim(),'Confirm actual opening cash receipt and enter a reference.');post(r.id,r.authorized,'Opening funding',r.id,a.reference);log(r,'Opening funding received',a.reference);
+  }else if(a.type==='saveCategory'){
+    permit('manage');const v=a.value;assert(v.name?.trim(),'Enter a category name.');assert(['Active','Inactive'].includes(v.status),'Choose a valid category status.');assert(!db.categories.some(c=>c.name.toLowerCase()===v.name.toLowerCase()&&c.id!==a.id),'This category name already exists.');let r=a.id?get('categories',a.id):null;if(r)Object.assign(r,v);else db.categories.push({...v,id:crypto.randomUUID()});
+  }else if(a.type==='deleteCategory'){
+    permit('manage');const c=get('categories',a.id);assert(![...db.requests,...db.liquidations].some(r=>r.items.some(i=>i.category===c.name)),'This category is used in history. Set it to Inactive instead.');db.categories=db.categories.filter(c=>c.id!==a.id);
+  }else throw Error('Unknown action.');
+  return {db,id:result};
+}

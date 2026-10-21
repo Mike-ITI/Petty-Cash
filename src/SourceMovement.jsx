@@ -1,0 +1,3 @@
+import React from 'react';
+import {money,dateLabel} from './model.mjs';
+export default function SourceMovement({record,funds}){const f=funds.find(f=>f.id===record.fund);return <div className="modal-body"><dl className="summary-grid"><div><dt>Fund</dt><dd>{f?.name} · {f?.code}</dd></div><div><dt>Event</dt><dd>{record.type}</dd></div><div><dt>Reference</dt><dd>{record.source}</dd></div><div><dt>Cash received</dt><dd>{money(record.amount)}</dd></div><div><dt>Receipt date</dt><dd>{dateLabel(record.date)}</dd></div><div><dt>Recorded by</dt><dd>{record.actor}</dd></div></dl><p>{record.note}</p><div className="notice">Sample opening funding event. No original external voucher is attached to this fixture.</div></div>}
