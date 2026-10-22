@@ -1,0 +1,10 @@
+{
+	local_certs
+	auto_https disable_redirects
+}
+
+https://192.168.5.57:8443 {
+	bind 0.0.0.0
+	tls internal
+	reverse_proxy 127.0.0.1:5173
+}
