@@ -1,0 +1,17 @@
+.git
+.openai
+.codex
+.agents
+Petty-Cash
+node_modules
+dist
+artifacts
+tests
+scripts
+*.docx
+*.zip
+*.crt
+*.key
+prd-extracted.txt
+Caddyfile
+Start*.cmd

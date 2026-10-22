@@ -1,0 +1,21 @@
+{
+  "source": {
+    "fileKey": "sLnszbRLvVGcVojiSmyKZy",
+    "nodeId": "1:286",
+    "url": "https://www.figma.com/design/sLnszbRLvVGcVojiSmyKZy/Design-Systems?node-id=1-286",
+    "inspectedOn": "2026-10-22"
+  },
+  "colors": {
+    "primary": "#559CDA",
+    "textPrimary": "#333333",
+    "textSecondary": "#666666",
+    "white": "#FFFFFF",
+    "secondaryButtonBorder": "#A8A8A8",
+    "gradient": { "angle": "90deg", "stops": [[0,"#559CDA"],[27,"#7BADFF"],[76,"#FFB58D"],[100,"#ED8028"]] }
+  },
+  "typography": { "family": "Poppins", "headingWeight": 600, "bodyWeight": 500, "labelWeight": 400 },
+  "buttonRadius": "8px",
+  "applicationVariants": { "accessibleActionBlue": "#2E73AB", "actionHover": "#225C8B" },
+  "staticDesignAssets": [],
+  "fontAssets": ["/fonts/poppins-400.ttf","/fonts/poppins-500.ttf","/fonts/poppins-600.ttf"]
+}

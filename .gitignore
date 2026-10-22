@@ -4,3 +4,5 @@ dist/
 .DS_Store
 artifacts/
 prd-extracted.txt
+.vercel/
+/Petty-Cash/
