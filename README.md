@@ -2,8 +2,6 @@
 
 A working React frontend prototype for Mayden Group, based on the supplied business PRD, functional revision notes, and visual references. No backend is included.
 
-The overall interface now uses the supplied Figma Design Systems foundations: locally bundled Poppins, the blue-to-orange brand palette, neutral text, and shared 8px controls. See `DESIGN.md` and `design-system/figma-foundations.json` for the source mapping and application details.
-
 ## Open and run
 
 For the already-built local preview, double-click **Start Prototype.cmd**, then open `http://127.0.0.1:5173`. The launcher uses the included build and does not require a fresh package installation.
@@ -13,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the local URL printed by Vite. Build with `pnpm build` and run the 40 workflow tests with `pnpm test`. The project uses React, Vite, Lucide icons, and shared purpose-built UI components.
+Open the local URL printed by Vite. Build with `pnpm build` and run the 21 workflow tests with `pnpm test`. The project uses React, Vite, Lucide icons, and shared purpose-built UI components.
 
 ## Explore the journey
 
@@ -58,14 +56,3 @@ All initial funds reconcile to their complete sample cash movement history: Main
 29 model tests cover exact cents, submission, permissions, actual release, insufficient cash, eligible source selection, receipt validation, cash return, corrections, reimbursement, reservation, replenishment approval/posting, snapshot counts, category history, opening funding, seed balance reconciliation, and Super User access across the complete workflow.
 
 Browser checks exercised cash return → verification → multi-selection replenishment → Finance approval → funding receipt posting → ledger tracing. Fund/category report filters, own-request lookup and expense auto-population, cash-difference feedback, unsaved-work confirmation, and responsive desktop/phone layouts were also inspected.
-
-
-## Direct employee reimbursement
-
-Open **Expense Settlements → New Settlement → Claim personal expenses**, or **Claim personal expenses** on the dashboard. No Cash Request is needed. Enter purpose, actual expense items, dates, merchants and receipts. Review any unrelated open advances and confirm the personal expense declaration.
-
-Submit → Approver review → Approved — Pending Payment → Finance records actual payment → Paid. Finance chooses the paying fund or outside company account and records date, method and reference. Insufficient petty cash keeps the claim unpaid. Only paid claims funded by petty cash can be included in replenishment, once.
-
-For an existing unreleased advance, **Use personal funds instead** cancels the advance and creates a reimbursement draft together. Released advances cannot be converted. In production the same checks require server-side transactions; this prototype demonstrates them atomically within one browser session.
-
-Sample RMB-2026-0001 awaits approval; RMB-2026-0002 awaits payment. See REIMBURSEMENT.md for reuse decisions and prototype limitations.
